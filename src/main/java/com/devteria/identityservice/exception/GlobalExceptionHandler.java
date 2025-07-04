@@ -1,7 +1,13 @@
 package com.devteria.identityservice.exception;
 
 import com.devteria.identityservice.dto.request.ApiResponse;
+
+import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Map;
+import java.util.Objects;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +17,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 @ControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+    private static final String MIN_ATTRIBUTE = "minAge";
+    private static final String MAX_ATTRIBUTE = "maxAge";
 
     @ExceptionHandler(value = Exception.class)
     ResponseEntity<ApiResponse> handlingRuntimeException(RuntimeException exception){
@@ -53,9 +61,12 @@ public class GlobalExceptionHandler {
         String enumKey = exception.getFieldError().getDefaultMessage();
 
         ErrorCode errorCode = ErrorCode.INVALID_KEY;
-
+        Map<String,Object> attributes = null;
         try {
             errorCode = ErrorCode.valueOf(enumKey);
+            var constraintViolations = exception.getBindingResult().getAllErrors().getFirst().unwrap(ConstraintViolation.class);
+            attributes = constraintViolations.getConstraintDescriptor().getAttributes();
+            log.info("Attributes: {}", attributes);
         } catch (IllegalArgumentException e){
 
         }
@@ -63,8 +74,14 @@ public class GlobalExceptionHandler {
         ApiResponse apiResponse = new ApiResponse();
 
         apiResponse.setCode(errorCode.getCode());
-        apiResponse.setMessage(errorCode.getMessage());
+        apiResponse.setMessage(Objects.nonNull(attributes) ? mapAttribute(errorCode.getMessage(), attributes) : errorCode.getMessage());
 
         return ResponseEntity.badRequest().body(apiResponse);
+    }
+    private String mapAttribute(String message, Map<String,Object> attributes){
+        String minValue = String.valueOf(attributes.get(MIN_ATTRIBUTE));
+        String maxValue = String.valueOf(attributes.get(MAX_ATTRIBUTE));
+
+        return message.replace("{min}", minValue).replace("{max}", maxValue);
     }
 }
